@@ -354,4 +354,32 @@ class BordDatabase(context: Context) : SQLiteOpenHelper(context, "bord_planner.d
         }
         writableDatabase.update("user_momentum", values, "id = 1", null)
     }
+    // --- DELETE & REBALANCE OPERATIONS (v1.0 Upgrade) ---
+
+    fun deleteRootTrack(trackId: Long) {
+        writableDatabase.delete("root_tracks", "id = ?", arrayOf(trackId.toString()))
+    }
+
+    fun deleteTaskNode(nodeId: Long) {
+        writableDatabase.delete("task_nodes", "id = ?", arrayOf(nodeId.toString()))
+    }
+
+    fun deleteMicroTask(microTaskId: Long) {
+        writableDatabase.delete("micro_tasks", "id = ?", arrayOf(microTaskId.toString()))
+    }
+
+    /**
+     * Evenly distributes any unscheduled or deficit hours across all active child nodes of a track.
+     */
+    fun redistributeTrackHoursEvenly(trackId: Long, additionalHoursPerNode: Double) {
+        if (additionalHoursPerNode <= 0.0) return
+        writableDatabase.execSQL(
+            """
+            UPDATE task_nodes 
+            SET allocated_hours = allocated_hours + ? 
+            WHERE root_track_id = ? AND is_completed = 0
+            """.trimIndent(),
+            arrayOf<Any>(additionalHoursPerNode, trackId)
+        )
+    }
 }

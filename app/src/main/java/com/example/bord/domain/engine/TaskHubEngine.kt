@@ -22,7 +22,10 @@ data class BordAppState(
     val rootTracks: List<RootTrack> = emptyList(),
     val taskNodes: List<TaskNode> = emptyList(),
     val momentum: UserMomentum = UserMomentum(),
-    val selectedDate: LocalDate = LocalDate.now()
+    val selectedDate: LocalDate = LocalDate.now(),
+    val activeTimerNodeId: Long? = null,
+    val isTimerRunning: Boolean = false,
+    val timerElapsedSeconds: Int = 0
 )
 
 /**
@@ -44,14 +47,19 @@ class TaskHubEngine(private val db: BordDatabase) {
     }
 
     fun refreshState(selectedDate: LocalDate = _state.value.selectedDate) {
-        _state.value = BordAppState(
+        val current = _state.value
+        val nodes = db.getAllTaskNodes()
+        val defaultTimerId = current.activeTimerNodeId
+            ?: nodes.firstOrNull { it.nodeType == NodeType.PROJECT_STUDY }?.id
+
+        _state.value = current.copy(
             rootTracks = db.getAllRootTracks(),
-            taskNodes = db.getAllTaskNodes(),
+            taskNodes = nodes,
             momentum = db.getUserMomentum(),
-            selectedDate = selectedDate
+            selectedDate = selectedDate,
+            activeTimerNodeId = defaultTimerId
         )
     }
-
     fun selectDate(date: LocalDate) {
         refreshState(selectedDate = date)
     }
@@ -317,6 +325,72 @@ class TaskHubEngine(private val db: BordDatabase) {
      * Seeds realistic starter data on first launch so the Board, Calendar, and Hour Bank
      * immediately show your Placement Prep + Place A Errand workflow in action.
      */
+    // --- GLOBAL PERSISTENT STOPWATCH CONTROLS ---
+
+    fun selectTimerNode(nodeId: Long) {
+        _state.value = _state.value.copy(activeTimerNodeId = nodeId)
+    }
+
+    fun toggleGlobalTimer() {
+        val current = _state.value
+        if (current.activeTimerNodeId == null) return
+        _state.value = current.copy(isTimerRunning = !current.isTimerRunning)
+    }
+
+    fun tickGlobalTimerOneSecond() {
+        val current = _state.value
+        if (current.isTimerRunning) {
+            _state.value = current.copy(timerElapsedSeconds = current.timerElapsedSeconds + 1)
+        }
+    }
+
+    fun bankGlobalTimerSession() {
+        val current = _state.value
+        val activeNode = current.taskNodes.find { it.id == current.activeTimerNodeId } ?: return
+        if (current.timerElapsedSeconds <= 0) return
+
+        val hoursLogged = max(0.1, current.timerElapsedSeconds / 3600.0)
+        _state.value = current.copy(isTimerRunning = false, timerElapsedSeconds = 0)
+        logInvestedHours(activeNode, hoursLogged)
+    }
+
+    // --- DELETE & 1-TAP DEFICIT REBALANCER (F2.6) ---
+
+    fun deleteRootTrack(trackId: Long) {
+        db.deleteRootTrack(trackId)
+        refreshState()
+    }
+
+    fun deleteTaskNode(nodeId: Long) {
+        db.deleteTaskNode(nodeId)
+        refreshState()
+    }
+
+    fun deleteMicroTask(microTaskId: Long) {
+        db.deleteMicroTask(microTaskId)
+        refreshState()
+    }
+
+    /**
+     * Block 2 (F2.6): 1-Tap Deficit Rebalancer
+     * Takes any unplanned hour deficit (or Ghost Bar deficit) on a RootTrack and spreads it
+     * evenly across all unfinished child nodes of that track.
+     */
+    fun rebalanceTrackDeficit(track: RootTrack) {
+        val activeChildren = _state.value.taskNodes.filter {
+            it.rootTrackId == track.id && !it.isCompleted
+        }
+        if (activeChildren.isEmpty()) return
+
+        val scheduledTotal = activeChildren.sumOf { it.allocatedHours }
+        val unplannedGap = max(0.0, track.remainingHours - scheduledTotal)
+        val ghostGap = track.ghostBarDeficit()
+        val hoursToSpread = if (unplannedGap > 0.1) unplannedGap else max(1.0, ghostGap)
+
+        val addPerNode = hoursToSpread / activeChildren.size.toDouble()
+        db.redistributeTrackHoursEvenly(track.id, addPerNode)
+        refreshState()
+    }
     private fun seedStarterDataIfEmpty() {
         if (_state.value.rootTracks.isNotEmpty() || _state.value.taskNodes.isNotEmpty()) return
 

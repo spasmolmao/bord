@@ -9,9 +9,8 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +23,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -35,15 +35,14 @@ import com.example.bord.domain.model.NodeType
 import com.example.bord.domain.model.RootTrack
 import com.example.bord.domain.model.TaskNode
 import com.example.bord.domain.model.UrgencyTier
+import com.example.bord.ui.theme.*
 import java.time.LocalDate
 import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * BLOCK 4 SCREEN: 2D Pan-and-Zoom Miro-Style Visual Board
- * - Shows Tier 1 RootTracks connected by curved lines to Tier 2 TaskNodes
- * - Highlights IDLE (unscheduled) nodes with a warning border
- * - Lets you tap any node to map its date chunk & hours straight onto the Calendar
+ * BLOCK 4 SCREEN (Minimalist Black & White Edition):
+ * 2D Pan-and-Zoom Node Canvas with Monochrome Bezier Connectors & Node Inspector Drawer.
  */
 @Composable
 fun MiroBoardScreen(
@@ -56,14 +55,13 @@ fun MiroBoardScreen(
     var parentTrackForNewChild by remember { mutableStateOf<RootTrack?>(null) }
 
     val boardNodes = remember(appState.taskNodes) {
-        // Strictly display Board-linked nodes (standalone calendar errands never clutter the board!)
         appState.taskNodes.filter { it.isBoardLinked }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0B0E14))
+            .background(BordPalette.BgPureBlack)
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(0.55f, 2.0f)
@@ -71,7 +69,7 @@ fun MiroBoardScreen(
                 }
             }
     ) {
-        // --- 1. INFINITE 2D TRANSFORMABLE BOARD LAYER ---
+        // --- 1. 2D TRANSFORMABLE CANVAS LAYER ---
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -84,22 +82,21 @@ fun MiroBoardScreen(
         ) {
             val density = LocalDensity.current.density
 
-            // Draw Background Dot Grid + Curved Connector Lines between RootTrack and Child TaskNodes
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val step = 48.dp.toPx()
+                val step = 44.dp.toPx()
                 for (x in 0..size.width.toInt() step step.toInt().coerceAtLeast(24)) {
                     for (y in 0..size.height.toInt() step step.toInt().coerceAtLeast(24)) {
                         drawCircle(
-                            color = Color(0xFF1E293B),
-                            radius = 2f,
+                            color = Color(0xFF1F1F23),
+                            radius = 1.5f,
                             center = Offset(x.toFloat(), y.toFloat())
                         )
                     }
                 }
 
-                // Draw Bezier Connectors from each RootTrack to its Child TaskNodes
+                // Draw Monochrome Bezier Curves from RootTrack -> Child TaskNodes
                 appState.rootTracks.forEach { track ->
-                    val startX = (track.boardX + 210f) * density
+                    val startX = (track.boardX + 215f) * density
                     val startY = (track.boardY + 55f) * density
 
                     boardNodes.filter { it.rootTrackId == track.id }.forEach { child ->
@@ -116,18 +113,18 @@ fun MiroBoardScreen(
                         }
                         val status = child.computeBoardStatus()
                         val lineColor = when (status) {
-                            BoardBorderStatus.IDLE_UNSCHEDULED -> Color(0xFFF59E0B)
-                            BoardBorderStatus.SCHEDULED_ACTIVE -> Color(0xFF3B82F6)
-                            BoardBorderStatus.BEHIND_PACE -> Color(0xFFEF4444)
-                            BoardBorderStatus.COMPLETED -> Color(0xFF10B981)
+                            BoardBorderStatus.IDLE_UNSCHEDULED -> BordPalette.TextDim
+                            BoardBorderStatus.SCHEDULED_ACTIVE -> BordPalette.SignalWhite
+                            BoardBorderStatus.BEHIND_PACE -> BordPalette.SignalAlert
+                            BoardBorderStatus.COMPLETED -> BordPalette.TextSecondary
                         }
                         drawPath(
                             path = path,
                             color = lineColor,
                             style = Stroke(
-                                width = 5f,
+                                width = 3.5f,
                                 pathEffect = if (status == BoardBorderStatus.IDLE_UNSCHEDULED) {
-                                    PathEffect.dashPathEffect(floatArrayOf(16f, 12f), 0f)
+                                    PathEffect.dashPathEffect(floatArrayOf(14f, 10f), 0f)
                                 } else null
                             )
                         )
@@ -135,7 +132,7 @@ fun MiroBoardScreen(
                 }
             }
 
-            // Render Tier 1 RootTrack Cards
+            // Tier 1 Root Track Nodes
             appState.rootTracks.forEach { track ->
                 RootTrackBoardCard(
                     track = track,
@@ -146,19 +143,19 @@ fun MiroBoardScreen(
                 )
             }
 
-            // Render Tier 2 Child PlanNode Cards
+            // Tier 2 Child Plan Nodes
             boardNodes.forEach { node ->
                 ChildPlanNodeBoardCard(
                     node = node,
                     onDrag = { dx, dy ->
                         engine.moveBoardItem(false, node.id, node.boardX + dx, node.boardY + dy)
                     },
-                    onClickMap = { selectedNodeForMapping = node }
+                    onClickInspect = { selectedNodeForMapping = node }
                 )
             }
         }
 
-        // --- 2. HUD OVERLAY (Legend & Reset View) ---
+        // --- 2. MINIMALIST TOP HUD BAR ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -167,30 +164,42 @@ fun MiroBoardScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                color = Color(0xCC161B26),
-                shape = RoundedCornerShape(10.dp)
+            Box(
+                modifier = Modifier
+                    .background(BordPalette.SurfaceCard)
+                    .border(1.dp, BordPalette.BorderHairline, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = "Drag boxes • Pinch to zoom • Tap a Child Node to Map to Calendar",
-                    color = Color(0xFFCBD5E1),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    text = "DRAG NODES // TAP CHILD NODE TO MAP OR START TIMER",
+                    color = BordPalette.TextSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
-            FilledTonalIconButton(
+            IconButton(
                 onClick = {
                     scale = 1f
                     panOffset = Offset.Zero
-                }
+                },
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(BordPalette.SurfaceCard, RoundedCornerShape(4.dp))
+                    .border(1.dp, BordPalette.BorderHairline, RoundedCornerShape(4.dp))
             ) {
-                Icon(Icons.Default.CenterFocusStrong, contentDescription = "Reset Camera")
+                Icon(
+                    imageVector = Icons.Default.CenterFocusStrong,
+                    contentDescription = "Center Canvas",
+                    tint = BordPalette.TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
 
-    // Drawer/Dialog to Map an Idle or Existing Board Node onto the Calendar
+    // Node Inspector & Calendar Mapper Dialog
     selectedNodeForMapping?.let { node ->
         MapNodeToCalendarDialog(
             node = node,
@@ -198,11 +207,19 @@ fun MiroBoardScreen(
             onSaveMapping = { start, end, hrs ->
                 engine.mapBoardNodeToCalendar(node.id, start, end, hrs)
                 selectedNodeForMapping = null
+            },
+            onStartTimerForNode = {
+                engine.selectTimerNode(node.id)
+                if (!appState.isTimerRunning) engine.toggleGlobalTimer()
+                selectedNodeForMapping = null
+            },
+            onDeleteNode = {
+                engine.deleteTaskNode(node.id)
+                selectedNodeForMapping = null
             }
         )
     }
 
-    // Dialog to branch a new Child Node off a RootTrack
     parentTrackForNewChild?.let { parent ->
         CreateBoardChildNodeDialog(
             parentTrack = parent,
@@ -220,7 +237,7 @@ fun MiroBoardScreen(
                     allocatedHours = hours,
                     rootTrackId = parent.id,
                     checklistItems = checklist,
-                    boardX = parent.boardX + 340f,
+                    boardX = parent.boardX + 320f,
                     boardY = parent.boardY + 40f
                 )
                 parentTrackForNewChild = null
@@ -239,9 +256,9 @@ private fun RootTrackBoardCard(
     var dragX by remember(track.boardX) { mutableFloatStateOf(track.boardX) }
     var dragY by remember(track.boardY) { mutableFloatStateOf(track.boardY) }
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-        shape = RoundedCornerShape(14.dp),
+    Surface(
+        color = BordPalette.SurfaceCard,
+        shape = RoundedCornerShape(BordPalette.CornerRadius),
         modifier = Modifier
             .offset {
                 IntOffset(
@@ -250,7 +267,7 @@ private fun RootTrackBoardCard(
                 )
             }
             .width(215.dp)
-            .border(2.dp, Color(0xFF3B82F6), RoundedCornerShape(14.dp))
+            .border(1.5.dp, BordPalette.SignalWhite, RoundedCornerShape(BordPalette.CornerRadius))
             .pointerInput(track.id) {
                 detectDragGestures(
                     onDragEnd = { onDrag(dragX - track.boardX, dragY - track.boardY) }
@@ -262,30 +279,41 @@ private fun RootTrackBoardCard(
             }
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text("TIER 1 • ROOT TRACK", color = Color(0xFF60A5FA), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Text(track.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-            Spacer(Modifier.height(4.dp))
             Text(
-                text = "${String.format(Locale.US, "%.1f", track.investedHours)} / ${String.format(Locale.US, "%.1f", track.targetHours)} hrs invested",
-                color = Color(0xFFCBD5E1),
-                fontSize = 12.sp
+                text = "TIER 01 // ROOT TRACK",
+                color = BordPalette.TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = track.title.uppercase(),
+                color = BordPalette.TextPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "HOURS: ${String.format(Locale.US, "%.1f", track.investedHours)} / ${String.format(Locale.US, "%.1f", track.targetHours)}H",
+                color = BordPalette.TextPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp
             )
             Text(
-                text = "Pace: ${String.format(Locale.US, "%.1f", track.requiredDailyPace())}h/day",
-                color = Color(0xFF38BDF8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
+                text = "PACE: ${String.format(Locale.US, "%.1f", track.requiredDailyPace())}H / DAY",
+                color = BordPalette.TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp
             )
-            Spacer(Modifier.height(8.dp))
-            FilledTonalButton(
+            Spacer(Modifier.height(10.dp))
+            MonoButton(
+                text = "+ Branch Node",
                 onClick = onAddChildNode,
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(vertical = 4.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Branch Node", fontSize = 12.sp)
-            }
+                inverted = true
+            )
         }
     }
 }
@@ -294,7 +322,7 @@ private fun RootTrackBoardCard(
 private fun ChildPlanNodeBoardCard(
     node: TaskNode,
     onDrag: (Float, Float) -> Unit,
-    onClickMap: () -> Unit
+    onClickInspect: () -> Unit
 ) {
     val density = LocalDensity.current.density
     var dragX by remember(node.boardX) { mutableFloatStateOf(node.boardX) }
@@ -302,15 +330,15 @@ private fun ChildPlanNodeBoardCard(
 
     val status = node.computeBoardStatus()
     val borderColor = when (status) {
-        BoardBorderStatus.IDLE_UNSCHEDULED -> Color(0xFFF59E0B) // Anti-Idle Warning!
-        BoardBorderStatus.SCHEDULED_ACTIVE -> Color(0xFF3B82F6)
-        BoardBorderStatus.BEHIND_PACE -> Color(0xFFEF4444)
-        BoardBorderStatus.COMPLETED -> Color(0xFF10B981)
+        BoardBorderStatus.IDLE_UNSCHEDULED -> BordPalette.TextDim
+        BoardBorderStatus.SCHEDULED_ACTIVE -> BordPalette.SignalWhite
+        BoardBorderStatus.BEHIND_PACE -> BordPalette.SignalAlert
+        BoardBorderStatus.COMPLETED -> BordPalette.TextSecondary
     }
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF151C28)),
-        shape = RoundedCornerShape(12.dp),
+    Surface(
+        color = BordPalette.SurfaceCard,
+        shape = RoundedCornerShape(BordPalette.CornerRadius),
         modifier = Modifier
             .offset {
                 IntOffset(
@@ -319,8 +347,12 @@ private fun ChildPlanNodeBoardCard(
                 )
             }
             .width(235.dp)
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable { onClickMap() }
+            .border(
+                width = if (status == BoardBorderStatus.SCHEDULED_ACTIVE || status == BoardBorderStatus.BEHIND_PACE) 1.5.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(BordPalette.CornerRadius)
+            )
+            .clickable { onClickInspect() }
             .pointerInput(node.id) {
                 detectDragGestures(
                     onDragEnd = { onDrag(dragX - node.boardX, dragY - node.boardY) }
@@ -334,51 +366,71 @@ private fun ChildPlanNodeBoardCard(
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
+                MonoBadge(
                     text = when (status) {
-                        BoardBorderStatus.IDLE_UNSCHEDULED -> "⚠️ IDLE (NO DATE)"
-                        BoardBorderStatus.SCHEDULED_ACTIVE -> "📅 SCHEDULED CHUNK"
-                        BoardBorderStatus.BEHIND_PACE -> "🚨 OVERDUE CHUNK"
-                        BoardBorderStatus.COMPLETED -> "✅ COMPLETED"
+                        BoardBorderStatus.IDLE_UNSCHEDULED -> "IDLE // UNMAPPED"
+                        BoardBorderStatus.SCHEDULED_ACTIVE -> "ACTIVE CHUNK"
+                        BoardBorderStatus.BEHIND_PACE -> "OVERDUE"
+                        BoardBorderStatus.COMPLETED -> "DONE"
                     },
-                    color = borderColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    isAlert = status == BoardBorderStatus.BEHIND_PACE,
+                    inverted = status == BoardBorderStatus.SCHEDULED_ACTIVE
                 )
                 Text(
                     text = "${(node.checklistProgressFraction * 100).toInt()}%",
-                    color = Color.White,
+                    color = BordPalette.TextPrimary,
+                    fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Spacer(Modifier.height(4.dp))
-            Text(node.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = node.title.uppercase(),
+                color = BordPalette.TextPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
 
             val dateLabel = if (node.startDate != null && node.endDate != null) {
-                "${node.startDate} → ${node.endDate}"
+                "${node.startDate} -> ${node.endDate}"
             } else {
-                "Tap card to assign Calendar dates"
+                "[TAP TO ASSIGN DATES]"
             }
-            Text(dateLabel, color = Color(0xFF94A3B8), fontSize = 11.sp)
-
-            Spacer(Modifier.height(6.dp))
-            LinearProgressIndicator(
-                progress = { node.checklistProgressFraction },
-                modifier = Modifier.fillMaxWidth(),
-                color = borderColor,
-                trackColor = Color(0xFF262F40)
+            Text(
+                text = dateLabel,
+                color = BordPalette.TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp
             )
+
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(BordPalette.SurfaceElevated)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(node.checklistProgressFraction.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(BordPalette.SignalWhite)
+                )
+            }
 
             Spacer(Modifier.height(6.dp))
             val doneCount = node.microTasks.count { it.isCompleted }
             Text(
-                text = "Checklist: $doneCount/${node.microTasks.size}  •  Hours: ${String.format(Locale.US, "%.1f", node.investedHours)}/${String.format(Locale.US, "%.1f", node.allocatedHours)}h",
-                color = Color(0xFFCBD5E1),
-                fontSize = 11.sp
+                text = "STEPS: $doneCount/${node.microTasks.size}  //  HRS: ${String.format(Locale.US, "%.1f", node.investedHours)}/${String.format(Locale.US, "%.1f", node.allocatedHours)}H",
+                color = BordPalette.TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp
             )
         }
     }
@@ -388,7 +440,9 @@ private fun ChildPlanNodeBoardCard(
 private fun MapNodeToCalendarDialog(
     node: TaskNode,
     onDismiss: () -> Unit,
-    onSaveMapping: (LocalDate, LocalDate, Double) -> Unit
+    onSaveMapping: (LocalDate, LocalDate, Double) -> Unit,
+    onStartTimerForNode: () -> Unit,
+    onDeleteNode: () -> Unit
 ) {
     var startOffsetDays by remember { mutableStateOf("0") }
     var durationDays by remember { mutableStateOf("5") }
@@ -396,34 +450,60 @@ private fun MapNodeToCalendarDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
-        title = { Text("Map '${node.title}' to Calendar") },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = node.title.uppercase(),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDeleteNode) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete Node", tint = BordPalette.SignalAlert)
+                }
+            }
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MonoButton(
+                    text = "▶ Start Focus Timer on This Node",
+                    onClick = onStartTimerForNode,
+                    modifier = Modifier.fillMaxWidth(),
+                    inverted = false
+                )
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Sets the 'One Big Chunk' span on your Calendar. Micro-tasks will ride this whole chunk unless pinned.",
-                    fontSize = 12.sp,
-                    color = Color(0xFF94A3B8)
+                    text = "MAP DATE CHUNK TO CALENDAR:",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BordPalette.TextSecondary
                 )
                 OutlinedTextField(
                     value = startOffsetDays,
                     onValueChange = { startOffsetDays = it },
-                    label = { Text("Start in how many days from today? (0 = Today)") }
+                    label = { Text("Start Offset Days (0 = Today)") }
                 )
                 OutlinedTextField(
                     value = durationDays,
                     onValueChange = { durationDays = it },
-                    label = { Text("Chunk Duration in Days (e.g. 5)") }
+                    label = { Text("Duration in Days (e.g. 5)") }
                 )
                 OutlinedTextField(
                     value = hoursText,
                     onValueChange = { hoursText = it },
-                    label = { Text("Allocated Hours from Hour Bank") }
+                    label = { Text("Allocated Hours") }
                 )
             }
         },
         confirmButton = {
-            Button(
+            MonoButton(
+                text = "Lock Dates",
                 onClick = {
                     val offset = startOffsetDays.toLongOrNull() ?: 0L
                     val span = (durationDays.toLongOrNull() ?: 1L).coerceAtLeast(1L)
@@ -432,12 +512,10 @@ private fun MapNodeToCalendarDialog(
                     val end = start.plusDays(span - 1L)
                     onSaveMapping(start, end, hrs)
                 }
-            ) {
-                Text("Lock Into Calendar")
-            }
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            MonoButton(text = "Close", onClick = onDismiss, inverted = false)
         }
     )
 }
@@ -455,18 +533,18 @@ private fun CreateBoardChildNodeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Branch Node under '${parentTrack.title}'") },
+        title = { Text("BRANCH NODE // ${parentTrack.title.uppercase()}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 14.sp) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Milestone / Project Node Title") }
+                    label = { Text("Milestone / Node Title") }
                 )
                 OutlinedTextField(
                     value = spanDaysText,
                     onValueChange = { spanDaysText = it },
-                    label = { Text("Days to Occupy on Calendar (0 = Keep Idle)") }
+                    label = { Text("Calendar Span Days (0 = Keep Idle)") }
                 )
                 OutlinedTextField(
                     value = hoursText,
@@ -476,12 +554,13 @@ private fun CreateBoardChildNodeDialog(
                 OutlinedTextField(
                     value = checklistRaw,
                     onValueChange = { checklistRaw = it },
-                    label = { Text("Micro-Checklist (comma separated)") }
+                    label = { Text("Checklist Steps (comma separated)") }
                 )
             }
         },
         confirmButton = {
-            Button(
+            MonoButton(
+                text = "Create Node",
                 onClick = {
                     if (title.isNotBlank()) {
                         val days = spanDaysText.toIntOrNull() ?: 0
@@ -490,12 +569,10 @@ private fun CreateBoardChildNodeDialog(
                         onCreate(title, days, hrs, items)
                     }
                 }
-            ) {
-                Text("Add to Board")
-            }
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            MonoButton(text = "Cancel", onClick = onDismiss, inverted = false)
         }
     )
 }

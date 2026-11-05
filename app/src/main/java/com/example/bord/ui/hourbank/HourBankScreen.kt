@@ -1,22 +1,19 @@
 package com.example.bord.ui.hourbank
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,62 +23,53 @@ import com.example.bord.domain.model.NodeType
 import com.example.bord.domain.model.RootTrack
 import com.example.bord.domain.model.TaskNode
 import com.example.bord.domain.model.UserMomentum
-import kotlinx.coroutines.delay
+import com.example.bord.ui.theme.*
 import java.time.LocalDate
 import java.util.Locale
 
 /**
- * Reusable Top Bar showing Points (including Negative Debt), Streak, and Momentum Multiplier.
+ * Minimalist Black & White Top Momentum & Streak Header.
  */
 @Composable
 fun MomentumHeaderBar(momentum: UserMomentum) {
     val isNegative = momentum.points < 0
-    val bgColor = if (isNegative) Color(0xFF3B1219) else Color(0xFF161B26)
-    val accentColor = if (isNegative) Color(0xFFEF4444) else Color(0xFF10B981)
 
-    Surface(
-        color = bgColor,
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(BordPalette.BgPureBlack)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = if (isNegative) "MOMENTUM DEBT (PENALTY)" else "MOMENTUM & STREAK",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${momentum.points} PTS  •  ${String.format(Locale.US, "%.2fx", momentum.multiplier)} Multiplier",
-                    color = accentColor,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-            }
-            Surface(
-                color = accentColor.copy(alpha = 0.16f),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text(
-                    text = "🔥 ${momentum.currentStreakDays}d Streak",
-                    color = accentColor,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
+        Column {
+            Text(
+                text = if (isNegative) "STATUS // PENALTY DEBT" else "STATUS // MOMENTUM",
+                color = if (isNegative) BordPalette.SignalAlert else BordPalette.TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = "${momentum.points} PTS  [${String.format(Locale.US, "%.2fx", momentum.multiplier)}]",
+                color = if (isNegative) BordPalette.SignalAlert else BordPalette.TextPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
         }
+        MonoBadge(
+            text = "${momentum.currentStreakDays}D STREAK",
+            isAlert = isNegative,
+            inverted = !isNegative
+        )
     }
 }
 
 /**
- * BLOCK 2 SCREEN: Placement Prep "Hours Invested" Calculator, Ghost Progress Bar, and Live Stopwatch.
+ * BLOCK 2 SCREEN (Minimalist B&W Edition):
+ * Global Stopwatch + Ghost Progress Bar + 1-Tap Rebalancer + Track Deletion.
  */
 @Composable
 fun HourBankScreen(
@@ -92,187 +80,146 @@ fun HourBankScreen(
         appState.taskNodes.filter { it.nodeType == NodeType.PROJECT_STUDY }
     }
 
-    var activeNodeId by remember { mutableStateOf(studyNodes.firstOrNull()?.id) }
-    var isRunning by remember { mutableStateOf(false) }
-    var elapsedSeconds by remember { mutableIntStateOf(0) }
     var showNewTrackDialog by remember { mutableStateOf(false) }
     var manualHoursText by remember { mutableStateOf("") }
     var showManualInput by remember { mutableStateOf(false) }
 
-    // Live 1-second Stopwatch coroutine loop
-    LaunchedEffect(isRunning) {
-        while (isRunning) {
-            delay(1000L)
-            elapsedSeconds += 1
-        }
-    }
-
-    val selectedNode: TaskNode? = studyNodes.find { it.id == activeNodeId } ?: studyNodes.firstOrNull()
+    val selectedNode: TaskNode? = studyNodes.find { it.id == appState.activeTimerNodeId }
+        ?: studyNodes.firstOrNull()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F131A))
+            .background(BordPalette.BgPureBlack)
             .padding(16.dp)
     ) {
-        // --- 1. DEFAULT LIVE FOCUS STOPWATCH CARD ---
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2232)),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Timer, contentDescription = null, tint = Color(0xFF60A5FA))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "LIVE FOCUS STOPWATCH (DEFAULT)",
-                            color = Color(0xFF93C5FD),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    TextButton(onClick = { showManualInput = !showManualInput }) {
-                        Text(
-                            text = if (showManualInput) "Hide Manual Log" else "+ Manual Hours",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
+        // --- 1. MINIMALIST MONOCHROME STOPWATCH DECK ---
+        MonoSectionTitle(title = "01 / FOCUS STOPWATCH", rightText = "GLOBAL SYNC")
+        MonoCard(isHighlighted = appState.isTimerRunning) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = selectedNode?.title ?: "Create a Project/Study Node to track hours",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = selectedNode?.title?.uppercase() ?: "SELECT A SPRINT NODE BELOW",
+                    color = BordPalette.TextPrimary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (showManualInput) "[CLOSE MANUAL]" else "[+ MANUAL HRS]",
+                    color = BordPalette.TextSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    modifier = Modifier.clickable { showManualInput = !showManualInput }
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            val hrs = appState.timerElapsedSeconds / 3600
+            val mins = (appState.timerElapsedSeconds % 3600) / 60
+            val secs = appState.timerElapsedSeconds % 60
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs),
+                    color = BordPalette.TextPrimary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.ExtraBold
                 )
 
-                Spacer(Modifier.height(8.dp))
-
-                val hrs = elapsedSeconds / 3600
-                val mins = (elapsedSeconds % 3600) / 60
-                val secs = elapsedSeconds % 60
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs),
-                        color = Color.White,
-                        fontSize = 34.sp,
-                        fontWeight = FontWeight.ExtraBold
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MonoButton(
+                        text = if (appState.isTimerRunning) "Pause" else "Start",
+                        onClick = {
+                            if (selectedNode != null && appState.activeTimerNodeId == null) {
+                                engine.selectTimerNode(selectedNode.id)
+                            }
+                            engine.toggleGlobalTimer()
+                        },
+                        enabled = selectedNode != null,
+                        inverted = true
                     )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { isRunning = !isRunning },
-                            enabled = selectedNode != null,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isRunning) Color(0xFFF59E0B) else Color(0xFF2563EB)
-                            )
-                        ) {
-                            Icon(
-                                imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = null
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (isRunning) "Pause" else "Start")
-                        }
-
-                        if (elapsedSeconds > 0 && selectedNode != null) {
-                            Button(
-                                onClick = {
-                                    isRunning = false
-                                    // Convert seconds to hours (minimum 0.1h credit when testing)
-                                    val loggedHrs = maxOf(0.1, elapsedSeconds / 3600.0)
-                                    engine.logInvestedHours(selectedNode, loggedHrs)
-                                    elapsedSeconds = 0
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
-                            ) {
-                                Icon(Icons.Default.Stop, contentDescription = null)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Bank")
-                            }
-                        }
+                    if (appState.timerElapsedSeconds > 0 && selectedNode != null) {
+                        MonoButton(
+                            text = "Bank",
+                            onClick = { engine.bankGlobalTimerSession() },
+                            inverted = false
+                        )
                     }
                 }
+            }
 
-                // Secondary Manual Fallback Input
-                if (showManualInput && selectedNode != null) {
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = manualHoursText,
-                            onValueChange = { manualHoursText = it },
-                            label = { Text("Hours (e.g. 1.5)") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Button(
-                            onClick = {
-                                val h = manualHoursText.toDoubleOrNull()
-                                if (h != null && h > 0.0) {
-                                    engine.logInvestedHours(selectedNode, h)
-                                    manualHoursText = ""
-                                    showManualInput = false
-                                }
+            if (showManualInput && selectedNode != null) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = manualHoursText,
+                        onValueChange = { manualHoursText = it },
+                        label = { Text("Manual Hours (e.g. 1.5)", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MonoButton(
+                        text = "Log",
+                        onClick = {
+                            val h = manualHoursText.toDoubleOrNull()
+                            if (h != null && h > 0.0) {
+                                engine.logInvestedHours(selectedNode, h)
+                                manualHoursText = ""
+                                showManualInput = false
                             }
-                        ) {
-                            Text("Log")
                         }
-                    }
+                    )
                 }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
 
-        // --- 2. HEADER FOR MACRO HOUR BANK BUCKETS ---
+        // --- 2. MACRO HOUR BANKS HEADER ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "PLACEMENT & PROJECT HOUR BANKS",
-                color = Color(0xFFCBD5E1),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
+            MonoSectionTitle(title = "02 / HOUR BANK BUCKETS (${appState.rootTracks.size})")
+            MonoButton(
+                text = "+ Bucket",
+                onClick = { showNewTrackDialog = true },
+                inverted = false
             )
-            FilledTonalButton(onClick = { showNewTrackDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("New Hour Bucket")
-            }
         }
 
         Spacer(Modifier.height(8.dp))
 
-        // --- 3. LIST OF HOUR BUCKETS WITH GHOST PROGRESS BARS ---
+        // --- 3. BUCKET CARDS WITH GHOST PROGRESS & 1-TAP REBALANCER ---
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(appState.rootTracks) { track ->
+            items(appState.rootTracks, key = { it.id }) { track ->
                 val childNodes = appState.taskNodes.filter { it.rootTrackId == track.id }
                 HourBucketCard(
                     track = track,
                     childNodes = childNodes,
                     selectedNodeId = selectedNode?.id,
-                    onSelectNodeForTimer = { activeNodeId = it.id }
+                    onSelectNodeForTimer = { engine.selectTimerNode(it.id) },
+                    onRebalance = { engine.rebalanceTrackDeficit(track) },
+                    onDeleteTrack = { engine.deleteRootTrack(track.id) }
                 )
             }
         }
@@ -298,7 +245,9 @@ private fun HourBucketCard(
     track: RootTrack,
     childNodes: List<TaskNode>,
     selectedNodeId: Long?,
-    onSelectNodeForTimer: (TaskNode) -> Unit
+    onSelectNodeForTimer: (TaskNode) -> Unit,
+    onRebalance: () -> Unit,
+    onDeleteTrack: () -> Unit
 ) {
     val today = LocalDate.now()
     val requiredToday = track.requiredDailyPace(today)
@@ -309,155 +258,165 @@ private fun HourBucketCard(
 
     val actualFraction = (track.investedHours / track.targetHours.coerceAtLeast(1.0)).toFloat().coerceIn(0f, 1f)
     val ghostFraction = (idealByToday / track.targetHours.coerceAtLeast(1.0)).toFloat().coerceIn(0f, 1f)
+    val isBehind = ghostDeficit > 0.05
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF171C26)),
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    MonoCard(isAlert = isBehind) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title.uppercase(),
+                    color = BordPalette.TextPrimary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = "DEADLINE: ${track.deadlineDate}  //  REM: ${String.format(Locale.US, "%.1f", track.remainingHours)}H",
+                    color = BordPalette.TextSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp
+                )
+            }
+            IconButton(onClick = onDeleteTrack, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "Delete Bucket",
+                    tint = BordPalette.TextDim
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // REQUIRED DAILY PACE CALLOUT
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(BordPalette.SurfaceElevated)
+                .border(1.dp, BordPalette.BorderHairline, RoundedCornerShape(4.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = track.title,
-                color = Color.White,
-                fontSize = 17.sp,
+                text = "REQUIRED TODAY",
+                color = BordPalette.TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Deadline: ${track.deadlineDate}  •  Remaining: ${String.format(Locale.US, "%.1f", track.remainingHours)}h",
-                color = Color(0xFF94A3B8),
-                fontSize = 12.sp
+                text = "AT LEAST ${String.format(Locale.US, "%.1f", requiredToday)} HRS",
+                color = BordPalette.TextPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold
             )
+        }
 
-            Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
 
-            // REQUIRED DAILY PACE BANNER
-            Surface(
-                color = Color(0xFF1E293B),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "⚡ Finish at least ${String.format(Locale.US, "%.1f", requiredToday)} hrs today to stay on pace",
-                    color = Color(0xFF38BDF8),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // DUAL GHOST PROGRESS BAR (Ideal Run vs. Actual Run)
+        // GHOST BAR VS ACTUAL BAR
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Text(
-                text = "Ghost Pace (Ideal by Today: ${String.format(Locale.US, "%.1f", idealByToday)}h)",
-                color = Color(0xFF94A3B8),
-                fontSize = 11.sp
+                text = "INVESTED: ${String.format(Locale.US, "%.1f", track.investedHours)} / ${String.format(Locale.US, "%.1f", track.targetHours)}H",
+                color = BordPalette.TextPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF262F40))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(ghostFraction)
-                        .fillMaxHeight()
-                        .background(Color(0xFF64748B))
-                )
-            }
-
-            Spacer(Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Your Invested Hours: ${String.format(Locale.US, "%.1f", track.investedHours)} / ${String.format(Locale.US, "%.1f", track.targetHours)}h",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (ghostDeficit > 0.05) {
-                    Text(
-                        text = "+${String.format(Locale.US, "%.1f", ghostDeficit)}h needed to catch Ghost Bar",
-                        color = Color(0xFFEF4444),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+            Text(
+                text = if (isBehind) {
+                    "DEFICIT: +${String.format(Locale.US, "%.1f", ghostDeficit)}H TO GHOST"
                 } else {
+                    "GHOST PACE: ON TRACK (${String.format(Locale.US, "%.1f", idealByToday)}H)"
+                },
+                color = if (isBehind) BordPalette.SignalAlert else BordPalette.TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Spacer(Modifier.height(6.dp))
+        MonoDualGhostBar(
+            actualFraction = actualFraction,
+            ghostFraction = ghostFraction,
+            isBehindGhost = isBehind
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        // SCHEDULED VS UNPLANNED + 1-TAP REBALANCER BUTTON
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "SCHEDULED: ${String.format(Locale.US, "%.1f", scheduledTotal)}H",
+                    color = BordPalette.TextSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp
+                )
+                Text(
+                    text = "UNPLANNED: ${String.format(Locale.US, "%.1f", unplannedDeficit)}H",
+                    color = if (unplannedDeficit > 0.0) BordPalette.SignalAlert else BordPalette.TextDim,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if ((unplannedDeficit > 0.1 || isBehind) && childNodes.isNotEmpty()) {
+                MonoButton(
+                    text = "Rebalance Hours",
+                    onClick = onRebalance,
+                    inverted = false
+                )
+            }
+        }
+
+        // SPRINT NODES LIST (TAP TO SELECT FOR STOPWATCH)
+        if (childNodes.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = BordPalette.BorderHairline, thickness = 1.dp)
+            Spacer(Modifier.height(8.dp))
+            childNodes.forEach { node ->
+                val isSelected = node.id == selectedNodeId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .background(if (isSelected) BordPalette.SignalWhite else BordPalette.SurfaceElevated)
+                        .border(1.dp, if (isSelected) BordPalette.SignalWhite else BordPalette.BorderHairline)
+                        .clickable { onSelectNodeForTimer(node) }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "Ahead of Ghost Pace!",
-                        color = Color(0xFF10B981),
+                        text = node.title.uppercase(),
+                        color = if (isSelected) BordPalette.BgPureBlack else BordPalette.TextPrimary,
+                        fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xFF262F40))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(actualFraction)
-                        .fillMaxHeight()
-                        .background(if (ghostDeficit > 0.05) Color(0xFFF59E0B) else Color(0xFF10B981))
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // 4-STAT BREAKDOWN ROW
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Scheduled: ${String.format(Locale.US, "%.1f", scheduledTotal)}h", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                Text(
-                    text = "Unplanned Deficit: ${String.format(Locale.US, "%.1f", unplannedDeficit)}h",
-                    color = if (unplannedDeficit > 0.0) Color(0xFFF87171) else Color(0xFF34D399),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            // Linked Child Study Nodes (Tap to load into Stopwatch)
-            if (childNodes.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Text("Tap a sprint node to load into Stopwatch:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                Spacer(Modifier.height(6.dp))
-                childNodes.forEach { node ->
-                    val isSelected = node.id == selectedNodeId
-                    Surface(
-                        color = if (isSelected) Color(0xFF1E3A8A) else Color(0xFF222938),
-                        shape = RoundedCornerShape(8.dp),
-                        onClick = { onSelectNodeForTimer(node) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 3.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(node.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text(
-                                "${String.format(Locale.US, "%.1f", node.investedHours)} / ${String.format(Locale.US, "%.1f", node.allocatedHours)}h",
-                                color = Color(0xFF93C5FD),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                    Text(
+                        text = "${String.format(Locale.US, "%.1f", node.investedHours)} / ${String.format(Locale.US, "%.1f", node.allocatedHours)}H",
+                        color = if (isSelected) BordPalette.BgPureBlack else BordPalette.TextSecondary,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -475,18 +434,18 @@ private fun NewHourBucketDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Placement / Project Hour Bucket") },
+        title = { Text("NEW HOUR BANK BUCKET", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Track Name (e.g. Java & System Design)") }
+                    label = { Text("Track Name (e.g. DSA / Core Java)") }
                 )
                 OutlinedTextField(
                     value = hoursText,
                     onValueChange = { hoursText = it },
-                    label = { Text("Target Total Hours (e.g. 40)") }
+                    label = { Text("Total Target Hours (e.g. 40)") }
                 )
                 OutlinedTextField(
                     value = daysText,
@@ -496,18 +455,17 @@ private fun NewHourBucketDialog(
             }
         },
         confirmButton = {
-            Button(
+            MonoButton(
+                text = "Create",
                 onClick = {
                     val hrs = hoursText.toDoubleOrNull() ?: 40.0
                     val days = daysText.toIntOrNull() ?: 30
                     if (title.isNotBlank()) onCreate(title, hrs, days)
                 }
-            ) {
-                Text("Create Bucket")
-            }
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            MonoButton(text = "Cancel", onClick = onDismiss, inverted = false)
         }
     )
 }
