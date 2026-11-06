@@ -3,6 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-configuration android:name="android.permission.VIBRATE"/>
+    <uses-configuration android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-configuration android:name="android:permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-configuration android:name="com.android.permission.SET_ALARM"/>
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -24,6 +28,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".platform.BordAlarmRingActivity"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.Bord"/>
+        <receiver
+            android:name=".platform.BordAlarmReceiver"
+            android:exported="false"/>
+
     </application>
 
 </manifest>
